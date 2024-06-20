@@ -41,8 +41,7 @@ contract PufferVaultV3 is PufferVaultV2, IPufferVaultV3 {
         IEigenLayer eigenStrategyManager,
         IPufferOracle oracle,
         IDelegationManager delegationManager,
-        address connext,
-        address _token,
+        address connext, // TODO Pack all brdging params in a struct
         address xToken,
         address lockBox,
         uint32 destinationDomain,
@@ -60,6 +59,7 @@ contract PufferVaultV3 is PufferVaultV2, IPufferVaultV3 {
 
     function mintAndBridgeRewards(BridgingParams calldata params, uint256 slippage) external payable restricted {
         super.mint(params.rewardsAmount, address(this));
+        // TODO change totalAssets
 
         approve(address(LOCKBOX), params.rewardsAmount);
 
@@ -82,7 +82,7 @@ contract PufferVaultV3 is PufferVaultV2, IPufferVaultV3 {
         );
 
         emit MintedAndBridgedRewards(
-            params.rewardsAmount, params.startEpoch, params.endEpoch, params.rewardsProof, params.rewardsURI
+            params.rewardsAmount, params.startEpoch, params.endEpoch, params.rewardsRoot, params.rewardsURI
         );
     }
 

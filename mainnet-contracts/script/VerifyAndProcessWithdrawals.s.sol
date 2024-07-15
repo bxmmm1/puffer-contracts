@@ -13,7 +13,7 @@ import { PufferModuleManager } from "../src/PufferModuleManager.sol";
 /**
  * @dev Example on how to run the script
  *
- *      Holesky Example of a queue withdrawals
+ *      Holesky Example of a queue  withdrawals
  *      https://holesky.etherscan.io/tx/0x9ccbefc8d5606d8d74c4cde3503416107bcf36c4194fef5d2321ce48f316be1f#eventlog
  *
  *      forge script script/VerifyAndProcessWithdrawals.s.sol:VerifyAndProcessWithdrawals --rpc-url=$RPC_URL --sig "run(address,uint64,uint40[],bytes32)" "0xe4695ab93163F91665Ce5b96527408336f070a71" "1713500196" "[1632140]" "0x5055464645525f4d4f44554c455f300000000000000000000000000000000000" --broadcast --private-key=$PK

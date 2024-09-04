@@ -75,22 +75,26 @@ jobs:
         working-directory: mainnet-contracts
         run: |
           selectors=$(forge selectors list)
-          echo "::set-output name=selectors::$selectors"
+          echo "selectors=$selectors" >> $GITHUB_OUTPUT
 
       - name: Comment Selectors
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GH_TOKEN }}
           script: |
-            const selectors = "${{ steps.forge-selectors.outputs.selectors }}";
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `${selectors}`
-            })
+            const selectors = "${{ steps.List Selectors.outputs.selectors }}";
+            if (selectors.trim() === "") {
+              console.log("Selectors output is empty, skipping comment creation.");
+            } else {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `Selectors:\n\`\`\`\n${selectors}\n\`\`\``
+              });
+            }
 
-  forge-coverage:
+  # forge-coverage:
     runs-on: "ubuntu-latest"
     steps:
       - name: Cancel previous runs

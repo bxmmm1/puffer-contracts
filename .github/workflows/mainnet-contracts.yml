@@ -71,7 +71,7 @@ jobs:
           commit_message: "forge fmt"
           file_pattern: '*.sol'
 
-      - name: List Selectors
+      - name: list-selectors
         working-directory: mainnet-contracts
         run: |
           selectors=$(forge selectors list)
@@ -82,7 +82,7 @@ jobs:
         with:
           github-token: ${{ secrets.GH_TOKEN }}
           script: |
-            const selectors = "${{ steps.List Selectors.outputs.selectors }}";
+            const selectors = "${{ steps.list-selectors.outputs.selectors }}";
             if (selectors.trim() === "") {
               console.log("Selectors output is empty, skipping comment creation.");
             } else {

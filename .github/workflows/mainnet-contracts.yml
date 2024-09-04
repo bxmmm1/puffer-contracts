@@ -45,7 +45,7 @@ jobs:
         run: echo running on branch ${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
 
       - name: Install yarn
-        uses: borales/actions-yarn@v4
+        uses: borales/actions-yarn@v5
         with:
           cmd: install # will run `yarn install` command
 
@@ -83,16 +83,12 @@ jobs:
           github-token: ${{ secrets.GH_TOKEN }}
           script: |
             const selectors = "${{ steps.list-selectors.outputs.selectors }}";
-            if (selectors.trim() === "") {
-              console.log("Selectors output is empty, skipping comment creation.");
-            } else {
-              github.rest.issues.createComment({
-                issue_number: context.issue.number,
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                body: `Selectors:\n\`\`\`\n${selectors}\n\`\`\``
-              });
-            }
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `Selectors: testing`
+            });
 
   # forge-coverage:
     # runs-on: "ubuntu-latest"

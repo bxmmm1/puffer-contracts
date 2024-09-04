@@ -71,14 +71,12 @@ jobs:
           commit_message: "forge fmt"
           file_pattern: '*.sol'
 
-      - name: list-selectors
+      - name: List selectors
+        id: list-selectors
         working-directory: mainnet-contracts
         run: |
           forge selectors list > selectors.txt
-          selectors=$(cat selectors.txt)
-          echo "selectors<<EOF" >> $GITHUB_OUTPUT
-          cat selectors.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "selectors=$(cat selectors.txt)" >> "$GITHUB_OUTPUT"
 
       - name: Comment Selectors
         uses: actions/github-script@v6
@@ -90,7 +88,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `${selectors}`
+              body: `Selectors ${selectors}`
             });
 
   # forge-coverage:

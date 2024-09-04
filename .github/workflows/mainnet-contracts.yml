@@ -71,7 +71,7 @@ jobs:
           commit_message: "forge fmt"
           file_pattern: '*.sol'
 
-                - name: List Selectors
+      - name: List Selectors
         working-directory: mainnet-contracts
         run: |
           selectors=$(forge selectors list)

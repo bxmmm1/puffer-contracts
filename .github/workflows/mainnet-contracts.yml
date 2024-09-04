@@ -76,7 +76,9 @@ jobs:
         run: |
           forge selectors list > selectors.txt
           selectors=$(cat selectors.txt)
-          echo "hello world" >> $GITHUB_OUTPUT
+          echo "selectors<<EOF" >> $GITHUB_OUTPUT
+          cat selectors.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Comment Selectors
         uses: actions/github-script@v6

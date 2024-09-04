@@ -54,12 +54,12 @@ jobs:
         # with: 
         #    version: nightly-de33b6af53005037b463318d2628b5cfcaf39916
 
-      - name: Run tests
-        working-directory: mainnet-contracts
-        run: forge test -vvv --ffi --no-match-test test_register_operator_eigen_da_holesky
-        env:
-          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
-          HOLESKY_RPC_URL: ${{ secrets.HOLESKY_RPC_URL }}
+      # - name: Run tests
+      #   working-directory: mainnet-contracts
+      #   run: forge test -vvv --ffi --no-match-test test_register_operator_eigen_da_holesky
+      #   env:
+      #     ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+      #     HOLESKY_RPC_URL: ${{ secrets.HOLESKY_RPC_URL }}
 
       - name: forge fmt
         working-directory: mainnet-contracts

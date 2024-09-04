@@ -71,6 +71,25 @@ jobs:
           commit_message: "forge fmt"
           file_pattern: '*.sol'
 
+                - name: List Selectors
+        working-directory: mainnet-contracts
+        run: |
+          selectors=$(forge selectors list)
+          echo "::set-output name=selectors::$selectors"
+
+      - name: Comment Selectors
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GH_TOKEN }}
+          script: |
+            const selectors = "${{ steps.forge-selectors.outputs.selectors }}";
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `${selectors}`
+            })
+
   forge-coverage:
     runs-on: "ubuntu-latest"
     steps:
@@ -110,28 +129,3 @@ jobs:
           name: mainnet-contracts
           files: "./lcov.info"
           token: ${{ secrets.CODECOV_TOKEN }}
-
-  forge-selectors:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: foundry-rs/foundry-toolchain@v1
-
-      - name: List Selectors
-        working-directory: mainnet-contracts
-        run: |
-          selectors=$(forge selectors list)
-          echo "::set-output name=selectors::$selectors"
-
-      - name: Comment Selectors
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.GH_TOKEN }}
-          script: |
-            const selectors = "${{ steps.forge-selectors.outputs.selectors }}";
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `${selectors}`
-            })

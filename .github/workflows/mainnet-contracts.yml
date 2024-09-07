@@ -75,8 +75,7 @@ jobs:
         id: list-selectors
         working-directory: mainnet-contracts
         run: |
-          forge selectors list > selectors.txt
-          echo "selectors=$(cat selectors.txt)" >> "$GITHUB_OUTPUT"
+          forge selectors list >> "$GITHUB_STEP_SUMMARY"
 
       - name: Comment Selectors
         uses: actions/github-script@v6

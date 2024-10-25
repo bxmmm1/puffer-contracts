@@ -3,6 +3,7 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import { IGuardianModule } from "./interface/IGuardianModule.sol";
 import { IPufferOracleV2 } from "./interface/IPufferOracleV2.sol";
+//solhint-disable-next-line no-unused-import
 import { IPufferOracle } from "./interface/IPufferOracle.sol";
 import { AccessManaged } from "@openzeppelin/contracts/access/manager/AccessManaged.sol";
 
@@ -65,6 +66,7 @@ contract PufferOracleV2 is IPufferOracleV2, AccessManaged {
      * @dev Restricted to PufferProtocol contract
      */
     function exitValidators(uint256 numberOfExits) public restricted {
+        // nosemgrep basic-arithmetic-underflow
         _numberOfActivePufferValidators -= numberOfExits;
         emit NumberOfActiveValidators(_numberOfActivePufferValidators);
     }

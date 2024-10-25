@@ -8,8 +8,13 @@ import { SetupAccess } from "script/SetupAccess.s.sol";
 import { AccessManager } from "@openzeppelin/contracts/access/manager/AccessManager.sol";
 import { DeployPufETH, PufferDeployment } from "../script/DeployPufETH.s.sol";
 import { UpgradePufETH } from "../script/UpgradePufETH.s.sol";
+import { DeployPufETHBridging } from "../script/DeployPufETHBridging.s.sol";
 import { DeployPufferOracle } from "script/DeployPufferOracle.s.sol";
-import { GuardiansDeployment, PufferProtocolDeployment } from "./DeploymentStructs.sol";
+import { GuardiansDeployment, PufferProtocolDeployment, BridgingDeployment } from "./DeploymentStructs.sol";
+import { PufferRevenueDepositor } from "src/PufferRevenueDepositor.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { GenerateRevenueDepositorCalldata } from
+    "script/AccessManagerMigrations/05_GenerateRevenueDepositorCalldata.s.sol";
 
 /**
  * @title Deploy all protocol contracts
@@ -21,7 +26,10 @@ import { GuardiansDeployment, PufferProtocolDeployment } from "./DeploymentStruc
 contract DeployEverything is BaseScript {
     address DAO;
 
-    function run(address[] calldata guardians, uint256 threshold) public returns (PufferProtocolDeployment memory) {
+    function run(address[] calldata guardians, uint256 threshold, address paymaster)
+        public
+        returns (PufferProtocolDeployment memory, BridgingDeployment memory)
+    {
         PufferProtocolDeployment memory deployment;
 
         // 1. Deploy pufETH
@@ -42,9 +50,6 @@ contract DeployEverything is BaseScript {
             puffETHDeployment.accessManager, guardiansDeployment.guardianModule, puffETHDeployment.pufferVault
         );
 
-        // 2. Upgrade the vault
-        new UpgradePufETH().run(puffETHDeployment, pufferOracle);
-
         PufferProtocolDeployment memory pufferDeployment =
             new DeployPuffer().run(guardiansDeployment, puffETHDeployment.pufferVault, pufferOracle);
 
@@ -53,6 +58,12 @@ contract DeployEverything is BaseScript {
         pufferDeployment.stETH = puffETHDeployment.stETH;
         pufferDeployment.weth = puffETHDeployment.weth;
         pufferDeployment.timelock = puffETHDeployment.timelock;
+
+        BridgingDeployment memory bridgingDeployment = new DeployPufETHBridging().run(puffETHDeployment);
+        address revenueDepositor = _deployRevenueDepositor(puffETHDeployment);
+        pufferDeployment.revenueDepositor = revenueDepositor;
+
+        new UpgradePufETH().run(puffETHDeployment, bridgingDeployment, pufferOracle, revenueDepositor);
 
         // `anvil` in the terminal
         if (_localAnvil) {
@@ -65,11 +76,11 @@ contract DeployEverything is BaseScript {
             DAO = _broadcaster;
         }
 
-        new SetupAccess().run(pufferDeployment, DAO, _broadcaster);
+        new SetupAccess().run(pufferDeployment, DAO, paymaster);
 
         _writeJson(pufferDeployment);
 
-        return pufferDeployment;
+        return (pufferDeployment, bridgingDeployment);
     }
 
     function _writeJson(PufferProtocolDeployment memory deployment) internal {
@@ -92,5 +103,47 @@ contract DeployEverything is BaseScript {
 
         string memory finalJson = vm.serializeString(obj, "", "");
         vm.writeJson(finalJson, "./output/puffer.json");
+    }
+
+    // script/DeployRevenueDepositor.s.sol It should match the one in the script
+    function _deployRevenueDepositor(PufferDeployment memory puffETHDeployment) internal returns (address) {
+        PufferRevenueDepositor revenueDepositorImpl = new PufferRevenueDepositor({
+            vault: address(puffETHDeployment.pufferVault),
+            weth: address(puffETHDeployment.weth),
+            treasury: makeAddr("Treasury")
+        });
+
+        address[] memory operatorsAddresses = new address[](7);
+        operatorsAddresses[0] = makeAddr("RNO1");
+        operatorsAddresses[1] = makeAddr("RNO2");
+        operatorsAddresses[2] = makeAddr("RNO3");
+        operatorsAddresses[3] = makeAddr("RNO4");
+        operatorsAddresses[4] = makeAddr("RNO5");
+        operatorsAddresses[5] = makeAddr("RNO6");
+        operatorsAddresses[6] = makeAddr("RNO7");
+
+        PufferRevenueDepositor revenueDepositor = PufferRevenueDepositor(
+            (
+                payable(
+                    new ERC1967Proxy{ salt: bytes32("revenueDepositor") }(
+                        address(revenueDepositorImpl),
+                        abi.encodeCall(
+                            PufferRevenueDepositor.initialize,
+                            (address(puffETHDeployment.accessManager), operatorsAddresses)
+                        )
+                    )
+                )
+            )
+        );
+
+        bytes memory accessManagerCd =
+            new GenerateRevenueDepositorCalldata().run(address(revenueDepositor), makeAddr("operationsMultisig"));
+
+        vm.startPrank(puffETHDeployment.timelock);
+        (bool success,) = address(puffETHDeployment.accessManager).call(accessManagerCd);
+        require(success, "AccessManager.call failed");
+        vm.stopPrank();
+
+        return address(revenueDepositor);
     }
 }

@@ -32,6 +32,9 @@ abstract contract PufferVaultStorage {
         uint64 lastWithdrawalDay;
         // 1 slot for withdrawal fee
         uint256 exitFeeBasisPoints;
+        // ETH rewards amount
+        uint256 totalRewardDepositAmount;
+        uint256 totalRewardMintAmount;
     }
 
     // keccak256(abi.encode(uint256(keccak256("puffervault.depositTracker")) - 1)) & ~bytes32(uint256(0xff))

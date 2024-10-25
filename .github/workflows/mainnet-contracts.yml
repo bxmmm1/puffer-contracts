@@ -10,25 +10,24 @@ on:
       - "mainnet-contracts/**"
 
 jobs:
-#   codespell:
-#       name: Check for spelling errors
-#       runs-on: ubuntu-latest
+  codespell:
+      name: Check for spelling errors
+      runs-on: ubuntu-latest
 
-#       steps:
-#         - name: Checkout
-#           uses: actions/checkout@v4
-#           with:
-#             fetch-depth: 0
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+          with:
+            fetch-depth: 0
 
-#         - name: Codespell
-#           uses: codespell-project/actions-codespell@v2.0
-#           with:
-#             check_hidden: true
-#             check_filenames: true
-#             ignore_words_list: amountIn
-#             skip: package-lock.json,*.pdf,./.git,yarn.lock
+        - name: Codespell
+          uses: codespell-project/actions-codespell@v2.0
+          with:
+            path: mainnet-contracts
+            check_hidden: true
+            check_filenames: true
 
-  unit-tests:
+  tests:
     runs-on: ubuntu-latest
     steps:
       - name: Cancel previous runs
@@ -45,7 +44,7 @@ jobs:
         run: echo running on branch ${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
 
       - name: Install yarn
-        uses: borales/actions-yarn@v4
+        uses: borales/actions-yarn@v5
         with:
           cmd: install # will run `yarn install` command
 
@@ -54,9 +53,12 @@ jobs:
         # with: 
         #   version: nightly-de33b6af53005037b463318d2628b5cfcaf39916
 
-      - name: Run tests
-        working-directory: mainnet-contracts
-        run: forge test -vvv --match-path './test/unit/*'
+      # - name: Run tests
+      #   working-directory: mainnet-contracts
+      #   run: forge test -vvv --ffi --no-match-test test_register_operator_eigen_da_holesky
+      #   env:
+      #     ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+      #     HOLESKY_RPC_URL: ${{ secrets.HOLESKY_RPC_URL }}
 
       - name: forge fmt
         working-directory: mainnet-contracts
@@ -67,3 +69,48 @@ jobs:
         with:
           commit_message: "forge fmt"
           file_pattern: '*.sol'
+
+      - name: List selectors
+        working-directory: mainnet-contracts
+        run: |
+          forge selectors list >> "$GITHUB_STEP_SUMMARY"
+
+  coverage:
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.12.1
+      
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          cache: 'yarn'
+          cache-dependency-path: yarn.lock
+          node-version: 20
+
+      - name: Branch name
+        run: echo running on branch ${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}
+
+      - name: Install yarn
+        uses: borales/actions-yarn@v5
+        with:
+          cmd: install # will run `yarn install` command
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: "Generate the coverage report"
+        working-directory: mainnet-contracts
+        run: 'forge coverage --no-match-coverage "(script|test|mock|node_modules|integrations|echidna|L1RewardManagerUnsafe)"  --no-match-contract "PufferModuleManagerHoleskyTestnetFFI" --report lcov -vvv'
+        env:
+          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+          HOLESKY_RPC_URL: ${{ secrets.HOLESKY_RPC_URL }}
+
+      - name: "Upload coverage report to Codecov"
+        uses: "codecov/codecov-action@v4"
+        with:
+          verbose: true
+          fail_ci_if_error: true
+          name: mainnet-contracts
+          files: "./lcov.info"
+          token: ${{ secrets.CODECOV_TOKEN }}

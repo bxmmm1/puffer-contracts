@@ -3,10 +3,11 @@ pragma solidity >=0.8.0 <0.9.0;
 
 import { IPufferModule } from "./interface/IPufferModule.sol";
 import { IPufferProtocol } from "./interface/IPufferProtocol.sol";
-import { Unauthorized } from "./Errors.sol";
+import { Unauthorized, InvalidAmount } from "./Errors.sol";
 import { IRestakingOperator } from "./interface/IRestakingOperator.sol";
 import { IPufferProtocol } from "./interface/IPufferProtocol.sol";
 import { PufferModule } from "./PufferModule.sol";
+import { PufferVaultV3 } from "./PufferVaultV3.sol";
 import { RestakingOperator } from "./RestakingOperator.sol";
 import { IPufferModuleManager } from "./interface/IPufferModuleManager.sol";
 import { BeaconProxy } from "@openzeppelin/contracts/proxy/beacon/BeaconProxy.sol";
@@ -16,7 +17,6 @@ import { AccessManagedUpgradeable } from
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { IDelegationManager } from "eigenlayer/interfaces/IDelegationManager.sol";
 import { ISignatureUtils } from "eigenlayer/interfaces/ISignatureUtils.sol";
-import { BeaconChainProofs } from "eigenlayer/libraries/BeaconChainProofs.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IRegistryCoordinator, IBLSApkRegistry } from "eigenlayer-middleware/interfaces/IRegistryCoordinator.sol";
 import { AVSContractsRegistry } from "./AVSContractsRegistry.sol";
@@ -43,6 +43,11 @@ contract PufferModuleManager is IPufferModuleManager, AccessManagedUpgradeable, 
     address public immutable override PUFFER_PROTOCOL;
 
     /**
+     * @inheritdoc IPufferModuleManager
+     */
+    address payable public immutable override PUFFER_VAULT;
+
+    /**
      * @dev AVS contracts registry
      */
     AVSContractsRegistry public immutable AVS_CONTRACTS_REGISTRY;
@@ -63,40 +68,18 @@ contract PufferModuleManager is IPufferModuleManager, AccessManagedUpgradeable, 
         PUFFER_MODULE_BEACON = pufferModuleBeacon;
         RESTAKING_OPERATOR_BEACON = restakingOperatorBeacon;
         PUFFER_PROTOCOL = pufferProtocol;
+        PUFFER_VAULT = payable(address(IPufferProtocol(PUFFER_PROTOCOL).PUFFER_VAULT()));
         AVS_CONTRACTS_REGISTRY = avsContractsRegistry;
         _disableInitializers();
     }
+
+    receive() external payable { }
 
     /**
      * @notice Initializes the contract
      */
     function initialize(address accessManager) external initializer {
         __AccessManaged_init(accessManager);
-    }
-
-    /**
-     * @inheritdoc IPufferModuleManager
-     * @dev Restricted in this context is like `whenNotPaused` modifier from Pausable.sol
-     */
-    function callVerifyWithdrawalCredentials(
-        bytes32 moduleName,
-        uint64 oracleTimestamp,
-        BeaconChainProofs.StateRootProof calldata stateRootProof,
-        uint40[] calldata validatorIndices,
-        bytes[] calldata validatorFieldsProofs,
-        bytes32[][] calldata validatorFields
-    ) external virtual restricted {
-        address moduleAddress = IPufferProtocol(PUFFER_PROTOCOL).getModuleAddress(moduleName);
-
-        IPufferModule(moduleAddress).verifyWithdrawalCredentials({
-            oracleTimestamp: oracleTimestamp,
-            stateRootProof: stateRootProof,
-            validatorIndices: validatorIndices,
-            validatorFieldsProofs: validatorFieldsProofs,
-            validatorFields: validatorFields
-        });
-
-        emit ValidatorCredentialsVerified(moduleName, validatorIndices);
     }
 
     /**
@@ -121,8 +104,9 @@ contract PufferModuleManager is IPufferModuleManager, AccessManagedUpgradeable, 
 
         uint256 sharesWithdrawn;
 
-        for (uint256 i = 0; i < withdrawals.length; i++) {
-            for (uint256 j = 0; j < withdrawals[i].shares.length; j++) {
+        for (uint256 i = 0; i < withdrawals.length; ++i) {
+            // nosemgrep array-length-outside-loop
+            for (uint256 j = 0; j < withdrawals[i].shares.length; ++j) {
                 sharesWithdrawn += withdrawals[i].shares[j];
             }
         }
@@ -153,46 +137,26 @@ contract PufferModuleManager is IPufferModuleManager, AccessManagedUpgradeable, 
     }
 
     /**
-     * @inheritdoc IPufferModuleManager
+     * @notice Transfers the unlocked rewards from the modules to the vault
      * @dev Restricted to Puffer Paymaster
      */
-    function callVerifyAndProcessWithdrawals(
-        bytes32 moduleName,
-        uint64 oracleTimestamp,
-        BeaconChainProofs.StateRootProof calldata stateRootProof,
-        BeaconChainProofs.WithdrawalProof[] calldata withdrawalProofs,
-        bytes[] calldata validatorFieldsProofs,
-        bytes32[][] calldata validatorFields,
-        bytes32[][] calldata withdrawalFields
-    ) external virtual restricted {
-        address moduleAddress = IPufferProtocol(PUFFER_PROTOCOL).getModuleAddress(moduleName);
-
-        IPufferModule(moduleAddress).verifyAndProcessWithdrawals({
-            oracleTimestamp: oracleTimestamp,
-            stateRootProof: stateRootProof,
-            withdrawalProofs: withdrawalProofs,
-            validatorFieldsProofs: validatorFieldsProofs,
-            validatorFields: validatorFields,
-            withdrawalFields: withdrawalFields
-        });
-
-        emit VerifiedAndProcessedWithdrawals(moduleName, validatorFields, withdrawalFields);
-    }
-
-    /**
-     * @inheritdoc IPufferModuleManager
-     * @dev Restricted to Puffer Paymaster
-     */
-    function callWithdrawNonBeaconChainETHBalanceWei(bytes32 moduleName, uint256 amountToWithdraw)
+    function transferRewardsToTheVault(address[] calldata modules, uint256[] calldata rewardsAmounts)
         external
         virtual
         restricted
     {
-        address moduleAddress = IPufferProtocol(PUFFER_PROTOCOL).getModuleAddress(moduleName);
+        uint256 totalRewardsAmount;
 
-        IPufferModule(moduleAddress).withdrawNonBeaconChainETHBalanceWei(amountToWithdraw);
+        for (uint256 i = 0; i < modules.length; ++i) {
+            //solhint-disable-next-line avoid-low-level-calls
+            (bool success,) = IPufferModule(modules[i]).call(address(this), rewardsAmounts[i], "");
+            if (!success) {
+                revert InvalidAmount();
+            }
+            totalRewardsAmount += rewardsAmounts[i];
+        }
 
-        emit NonBeaconChainETHBalanceWithdrawn(moduleName, amountToWithdraw);
+        PufferVaultV3(PUFFER_VAULT).depositRewards{ value: totalRewardsAmount }();
     }
 
     /**
@@ -209,13 +173,33 @@ contract PufferModuleManager is IPufferModuleManager, AccessManagedUpgradeable, 
      * @inheritdoc IPufferModuleManager
      * @dev Restricted to the DAO
      */
+    function callSetClaimerFor(address moduleOrReOp, address claimer) external virtual restricted {
+        // We can cast `moduleOrReOp` to IPufferModule/IRestakingOperator, uses the same function signature.
+        IPufferModule(moduleOrReOp).callSetClaimerFor(claimer);
+        emit ClaimerSet({ rewardsReceiver: moduleOrReOp, claimer: claimer });
+    }
+
+    /**
+     * @inheritdoc IPufferModuleManager
+     * @dev Restricted to the DAO
+     */
+    function callSetProofSubmitter(bytes32 moduleName, address proofSubmitter) external virtual restricted {
+        address moduleAddress = IPufferProtocol(PUFFER_PROTOCOL).getModuleAddress(moduleName);
+        IPufferModule(moduleAddress).setProofSubmitter(proofSubmitter);
+        emit ProofSubmitterSet(moduleName, proofSubmitter);
+    }
+
+    /**
+     * @inheritdoc IPufferModuleManager
+     * @dev Restricted to the DAO
+     */
     function createNewRestakingOperator(
         string calldata metadataURI,
         address delegationApprover,
         uint32 stakerOptOutWindowBlocks
     ) external virtual restricted returns (IRestakingOperator) {
         IDelegationManager.OperatorDetails memory operatorDetails = IDelegationManager.OperatorDetails({
-            earningsReceiver: address(this),
+            __deprecated_earningsReceiver: address(this),
             delegationApprover: delegationApprover,
             stakerOptOutWindowBlocks: stakerOptOutWindowBlocks
         });
@@ -379,6 +363,17 @@ contract PufferModuleManager is IPufferModuleManager, AccessManagedUpgradeable, 
      * @inheritdoc IPufferModuleManager
      * @dev Restricted to the DAO
      */
+    function callStartCheckpoint(address[] calldata moduleAddresses) external virtual restricted {
+        for (uint256 i = 0; i < moduleAddresses.length; ++i) {
+            // reverts if supplied with a duplicate module address
+            IPufferModule(moduleAddresses[i]).startCheckpoint();
+        }
+    }
+
+    /**
+     * @inheritdoc IPufferModuleManager
+     * @dev Restricted to the DAO
+     */
     function callDeregisterOperatorFromAVS(
         IRestakingOperator restakingOperator,
         address avsRegistryCoordinator,
@@ -396,7 +391,7 @@ contract PufferModuleManager is IPufferModuleManager, AccessManagedUpgradeable, 
     function callUpdateOperatorAVSSocket(
         IRestakingOperator restakingOperator,
         address avsRegistryCoordinator,
-        string memory socket
+        string calldata socket
     ) external virtual restricted {
         restakingOperator.updateOperatorAVSSocket(avsRegistryCoordinator, socket);
 

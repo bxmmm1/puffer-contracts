@@ -31,25 +31,37 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
 
     /**
      * @dev The Wrapped Ethereum ERC20 token
+     * @custom:oz-upgrades-unsafe-allow state-variable-immutable
      */
     IWETH internal immutable _WETH;
 
     /**
      * @dev The PufferOracle contract
+     * @custom:oz-upgrades-unsafe-allow state-variable-immutable
      */
     IPufferOracle public immutable PUFFER_ORACLE;
 
     /**
      * @notice Delegation manager from EigenLayer
+     * @custom:oz-upgrades-unsafe-allow state-variable-immutable
      */
     IDelegationManager internal immutable _DELEGATION_MANAGER;
 
     /**
      * @dev Two wallets that transferred pufETH to the PufferVault by mistake.
+     * @custom:oz-upgrades-unsafe-allow state-variable-immutable
      */
-    address private constant WHALE_PUFFER = 0xe6957D9b493b2f2634c8898AC09dc14Cb24BE222;
-    address private constant PUFFER = 0x34c912C13De7953530DBE4c32F597d1bAF77889b;
+    address private constant _WHALE_PUFFER = 0xe6957D9b493b2f2634c8898AC09dc14Cb24BE222;
 
+    /**
+     * @dev Two wallets that transferred pufETH to the PufferVault by mistake.
+     * @custom:oz-upgrades-unsafe-allow state-variable-immutable
+     */
+    address private constant _PUFFER = 0x34c912C13De7953530DBE4c32F597d1bAF77889b;
+
+    /**
+     * @custom:oz-upgrades-unsafe-allow constructor
+     */
     constructor(
         IStETH stETH,
         IWETH weth,
@@ -76,6 +88,7 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
     /**
      * @notice Changes underlying asset from stETH to WETH
      */
+    // nosemgrep tin-unprotected-initialize
     function initialize() public reinitializer(2) {
         // In this initialization, we swap out the underlying stETH with WETH
         ERC4626Storage storage erc4626Storage = _getERC4626StorageInternal();
@@ -91,10 +104,10 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
 
             // https://etherscan.io/tx/0x2e02a00dbc8ba48cd65a6802d174c210d0c4869806a564cca0088e42d382b2ff
             // slither-disable-next-line unchecked-transfer
-            this.transfer(WHALE_PUFFER, 299.864287100672938618 ether);
+            this.transfer(_WHALE_PUFFER, 299.864287100672938618 ether);
             // https://etherscan.io/tx/0x7d309dc26cb3f0226e480e0d4c598707faee59d58bfc68bedb75cf5055ac274a
             // slither-disable-next-line unchecked-transfer
-            this.transfer(PUFFER, 25426113577506618);
+            this.transfer(_PUFFER, 25426113577506618);
         }
     }
 
@@ -287,6 +300,7 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
         SafeERC20.safeIncreaseAllowance(_ST_ETH, address(_LIDO_WITHDRAWAL_QUEUE), lockedAmount);
         requestIds = _LIDO_WITHDRAWAL_QUEUE.requestWithdrawals(amounts, address(this));
 
+        // nosemgrep array-length-outside-loop
         for (uint256 i = 0; i < requestIds.length; ++i) {
             $.lidoWithdrawalAmounts.set(requestIds[i], amounts[i]);
         }
@@ -321,6 +335,7 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
         uint256 balanceAfter = address(this).balance;
         uint256 actualWithdrawal = balanceAfter - balanceBefore;
         // Deduct from the locked amount the expected amount
+        // nosemgrep basic-arithmetic-underflow
         $.lidoLockedETH -= expectedWithdrawal;
 
         emit ClaimedWithdrawals(requestIds);
@@ -340,6 +355,7 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
         uint256 ethBalance = address(this).balance;
         if (ethBalance < ethAmount) {
             // Reverts if no WETH to unwrap
+            // nosemgrep basic-arithmetic-underflow
             _WETH.withdraw(ethAmount - ethBalance);
         }
 
@@ -355,8 +371,8 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
 
     /**
      * @notice Allows the `msg.sender` to burn their (pufETH) shares
-     * @dev Restricted in this context is like `whenNotPaused` modifier from Pausable.sol
-     * @dev It is used to burn portions of Puffer validator bonds due to inactivity or slashing
+     * @dev Restricted to PufferProtocol
+     * It is used to burn portions of Puffer validator bonds due to inactivity or slashing
      * @param shares The amount of shares to burn
      */
     function burn(uint256 shares) public restricted {
@@ -444,6 +460,7 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
      */
     function previewRedeem(uint256 shares) public view virtual override returns (uint256) {
         uint256 assets = super.previewRedeem(shares);
+        // nosemgrep basic-arithmetic-underflow
         return assets - _feeOnTotal(assets, getExitFeeBasisPoints());
     }
 
@@ -512,6 +529,7 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
             revert InvalidWithdrawal();
         }
 
+        // nosemgrep
         $.eigenLayerPendingWithdrawalSharesAmount -= queuedWithdrawal.shares[0];
 
         _DELEGATION_MANAGER.completeQueuedWithdrawal({
@@ -600,6 +618,7 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
     }
 
     modifier markDeposit() virtual {
+        //solhint-disable-next-line no-inline-assembly
         assembly {
             tstore(_DEPOSIT_TRACKER_LOCATION, 1) // Store `1` in the deposit tracker location
         }
@@ -607,6 +626,7 @@ contract PufferVaultV2 is PufferVault, IPufferVaultV2 {
     }
 
     modifier revertIfDeposited() virtual {
+        //solhint-disable-next-line no-inline-assembly
         assembly {
             // If the deposit tracker location is set to `1`, revert with `DepositAndWithdrawalForbidden()`
             if tload(_DEPOSIT_TRACKER_LOCATION) {

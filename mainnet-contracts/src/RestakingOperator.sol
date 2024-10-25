@@ -15,6 +15,7 @@ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 import { IRegistryCoordinator, IBLSApkRegistry } from "eigenlayer-middleware/interfaces/IRegistryCoordinator.sol";
 import { IRegistryCoordinatorExtended } from "./interface/IRegistryCoordinatorExtended.sol";
 import { ISignatureUtils } from "eigenlayer/interfaces/ISignatureUtils.sol";
+import { IRewardsCoordinator } from "./interface/EigenLayer/IRewardsCoordinator.sol";
 
 /**
  * @title RestakingOperator
@@ -26,6 +27,11 @@ contract RestakingOperator is IRestakingOperator, IERC1271, Initializable, Acces
     using Address for address;
     // keccak256(abi.encode(uint256(keccak256("RestakingOperator.storage")) - 1)) & ~bytes32(uint256(0xff))
     // slither-disable-next-line unused-state
+
+    /**
+     * @dev Upgradeable contract from EigenLayer
+     */
+    IRewardsCoordinator public immutable EIGEN_REWARDS_COORDINATOR;
 
     bytes32 private constant _RESTAKING_OPERATOR_STORAGE =
         0x2182a68f8e463a6b4c76f5de5bb25b7b51ccc88cb3b9ba6c251c356b50555100;
@@ -70,7 +76,12 @@ contract RestakingOperator is IRestakingOperator, IERC1271, Initializable, Acces
     }
 
     // We use constructor to set the immutable variables
-    constructor(IDelegationManager delegationManager, ISlasher slasher, IPufferModuleManager moduleManager) {
+    constructor(
+        IDelegationManager delegationManager,
+        ISlasher slasher,
+        IPufferModuleManager moduleManager,
+        IRewardsCoordinator rewardsCoordinator
+    ) {
         if (address(delegationManager) == address(0)) {
             revert InvalidAddress();
         }
@@ -83,6 +94,7 @@ contract RestakingOperator is IRestakingOperator, IERC1271, Initializable, Acces
         EIGEN_DELEGATION_MANAGER = delegationManager;
         EIGEN_SLASHER = slasher;
         PUFFER_MODULE_MANAGER = moduleManager;
+        EIGEN_REWARDS_COORDINATOR = rewardsCoordinator;
         _disableInitializers();
     }
 
@@ -142,7 +154,7 @@ contract RestakingOperator is IRestakingOperator, IERC1271, Initializable, Acces
         bytes calldata quorumNumbers,
         string calldata socket,
         IBLSApkRegistry.PubkeyRegistrationParams calldata params,
-        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature
+        ISignatureUtils.SignatureWithSaltAndExpiry calldata operatorSignature
     ) external virtual onlyPufferModuleManager {
         IRegistryCoordinatorExtended(avsRegistryCoordinator).registerOperator({
             quorumNumbers: quorumNumbers,
@@ -162,8 +174,8 @@ contract RestakingOperator is IRestakingOperator, IERC1271, Initializable, Acces
         string calldata socket,
         IBLSApkRegistry.PubkeyRegistrationParams calldata params,
         IRegistryCoordinator.OperatorKickParam[] calldata operatorKickParams,
-        ISignatureUtils.SignatureWithSaltAndExpiry memory churnApproverSignature,
-        ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature
+        ISignatureUtils.SignatureWithSaltAndExpiry calldata churnApproverSignature,
+        ISignatureUtils.SignatureWithSaltAndExpiry calldata operatorSignature
     ) external virtual onlyPufferModuleManager {
         IRegistryCoordinatorExtended(avsRegistryCoordinator).registerOperatorWithChurn({
             quorumNumbers: quorumNumbers,
@@ -204,12 +216,20 @@ contract RestakingOperator is IRestakingOperator, IERC1271, Initializable, Acces
      * @inheritdoc IRestakingOperator
      * @dev Restricted to the PufferModuleManager
      */
-    function updateOperatorAVSSocket(address avsRegistryCoordinator, string memory socket)
+    function updateOperatorAVSSocket(address avsRegistryCoordinator, string calldata socket)
         external
         virtual
         onlyPufferModuleManager
     {
         IRegistryCoordinatorExtended(avsRegistryCoordinator).updateSocket(socket);
+    }
+
+    /**
+     * @inheritdoc IRestakingOperator
+     * @dev Restricted to PufferModuleManager
+     */
+    function callSetClaimerFor(address claimer) external virtual onlyPufferModuleManager {
+        EIGEN_REWARDS_COORDINATOR.setClaimerFor(claimer);
     }
 
     /**

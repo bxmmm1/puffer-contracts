@@ -8,12 +8,16 @@ import { PufferVault } from "../../src/PufferVault.sol";
 import { PufferVaultV2 } from "../../src/PufferVaultV2.sol";
 import { AccessManager } from "@openzeppelin/contracts/access/manager/AccessManager.sol";
 import { PufferDeployment } from "../../src/structs/PufferDeployment.sol";
+import { BridgingDeployment } from "script/DeploymentStructs.sol";
+import { DeployPufETHBridging } from "script/DeployPufETHBridging.s.sol";
+
 import { DeployPufETH } from "script/DeployPufETH.s.sol";
 import { UpgradePufETH } from "script/UpgradePufETH.s.sol";
 import { MockPufferOracle } from "../mocks/MockPufferOracle.sol";
 import { WETH9 } from "../mocks/WETH9.sol";
 import { ROLE_ID_DAO } from "../../script/Roles.sol";
 import { GenerateAccessManagerCallData } from "script/GenerateAccessManagerCallData.sol";
+import { MockRevenueDepositor } from "../mocks/MockRevenueDepositor.sol";
 
 contract PufferVaultV2Property is ERC4626Test {
     PufferDepositor public pufferDepositor;
@@ -58,8 +62,11 @@ contract PufferVaultV2Property is ERC4626Test {
         PufferDeployment memory deployment = new DeployPufETH().run();
 
         MockPufferOracle mockOracle = new MockPufferOracle();
+        MockRevenueDepositor mockRevenueDepositor = new MockRevenueDepositor();
 
-        new UpgradePufETH().run(deployment, address(mockOracle));
+        BridgingDeployment memory bridgingDeployment = new DeployPufETHBridging().run(deployment);
+
+        new UpgradePufETH().run(deployment, bridgingDeployment, address(mockOracle), address(mockRevenueDepositor));
 
         pufferDepositor = PufferDepositor(payable(deployment.pufferDepositor));
         pufferVault = PufferVaultV2(payable(deployment.pufferVault));

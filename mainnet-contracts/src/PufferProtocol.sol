@@ -170,6 +170,7 @@ contract PufferProtocol is IPufferProtocol, AccessManagedUpgradeable, UUPSUpgrad
         }
 
         // Reverts if insufficient balance
+        // nosemgrep basic-arithmetic-underflow
         $.nodeOperatorInfo[msg.sender].vtBalance -= amount;
 
         // slither-disable-next-line unchecked-transfer
@@ -329,6 +330,7 @@ contract PufferProtocol is IPufferProtocol, AccessManagedUpgradeable, UUPSUpgrad
             burnAmounts.vt += vtBurnAmount;
 
             // Store the withdrawal amount for that node operator
+            // nosemgrep basic-arithmetic-underflow
             bondWithdrawals[i].pufETHAmount = (bondAmount - burnAmount);
 
             emit ValidatorExited({
@@ -342,6 +344,7 @@ contract PufferProtocol is IPufferProtocol, AccessManagedUpgradeable, UUPSUpgrad
             // Decrease the number of registered validators for that module
             _decreaseNumberOfRegisteredValidators($, validatorInfos[i].moduleName);
             // Storage VT and the active validator count update for the Node Operator
+            // nosemgrep basic-arithmetic-underflow
             $.nodeOperatorInfo[validator.node].vtBalance -= SafeCast.toUint96(vtBurnAmount);
             --$.nodeOperatorInfo[validator.node].activeValidatorCount;
 
@@ -364,6 +367,7 @@ contract PufferProtocol is IPufferProtocol, AccessManagedUpgradeable, UUPSUpgrad
             // The excess is the rewards amount for that Node Operator
             uint256 transferAmount =
                 validatorInfos[i].withdrawalAmount > 32 ether ? 32 ether : validatorInfos[i].withdrawalAmount;
+            //solhint-disable-next-line avoid-low-level-calls
             (bool success,) = IPufferModule(validatorInfos[i].module).call(address(PUFFER_VAULT), transferAmount, "");
             if (!success) {
                 revert Failed();
@@ -400,6 +404,7 @@ contract PufferProtocol is IPufferProtocol, AccessManagedUpgradeable, UUPSUpgrad
         uint256 vtPenalty = $.vtPenalty;
         // Burn VT penalty amount from the Node Operator
         VALIDATOR_TICKET.burn(vtPenalty);
+        // nosemgrep basic-arithmetic-underflow
         $.nodeOperatorInfo[node].vtBalance -= SafeCast.toUint96(vtPenalty);
         --$.nodeOperatorInfo[node].pendingValidatorCount;
 
@@ -843,7 +848,7 @@ contract PufferProtocol is IPufferProtocol, AccessManagedUpgradeable, UUPSUpgrad
     }
 
     function _decreaseNumberOfRegisteredValidators(ProtocolStorage storage $, bytes32 moduleName) internal {
-        $.moduleLimits[moduleName].numberOfRegisteredValidators -= 1;
+        --$.moduleLimits[moduleName].numberOfRegisteredValidators;
         emit NumberOfRegisteredValidatorsChanged(moduleName, $.moduleLimits[moduleName].numberOfRegisteredValidators);
     }
 

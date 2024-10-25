@@ -9,19 +9,17 @@ import { PufferProtocol } from "../../src/PufferProtocol.sol";
 import { PufferModule } from "../../src/PufferModule.sol";
 import { IRestakingOperator } from "../../src/interface/IRestakingOperator.sol";
 import { IPufferModuleManager } from "../../src/interface/IPufferModuleManager.sol";
-import { RestakingOperator } from "../../src/RestakingOperator.sol";
 import { AVSContractsRegistry } from "../../src/AVSContractsRegistry.sol";
 import { PufferModuleManager } from "../../src/PufferModuleManager.sol";
 import { DeployEverything } from "script/DeployEverything.s.sol";
 import { IDelegationManager } from "eigenlayer/interfaces/IDelegationManager.sol";
 import { ISignatureUtils } from "eigenlayer/interfaces/ISignatureUtils.sol";
-import { IStrategyManager } from "eigenlayer/interfaces/IStrategyManager.sol";
 import { IStrategy } from "eigenlayer/interfaces/IStrategy.sol";
-import { IBLSApkRegistry, IRegistryCoordinator } from "eigenlayer-middleware/interfaces/IRegistryCoordinator.sol";
+import { IBLSApkRegistry } from "eigenlayer-middleware/interfaces/IRegistryCoordinator.sol";
 import { IAVSDirectory } from "eigenlayer/interfaces/IAVSDirectory.sol";
+import { IRewardsCoordinator } from "../../src/interface/EigenLayer/IRewardsCoordinator.sol";
 import { IDelegationManager } from "eigenlayer/interfaces/IDelegationManager.sol";
 import { BN254 } from "eigenlayer-middleware/libraries/BN254.sol";
-import { IDelayedWithdrawalRouter } from "eigenlayer/interfaces/IDelayedWithdrawalRouter.sol";
 import { IRegistryCoordinatorExtended } from "../../src/interface/IRegistryCoordinatorExtended.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -33,6 +31,7 @@ interface Weth {
     function approve(address spender, uint256 amount) external returns (bool);
 }
 
+// PufferTestnet V1 deployment
 contract PufferModuleManagerHoleskyTestnetTest is Test {
     using BN254 for BN254.G1Point;
     using Strings for uint256;
@@ -59,6 +58,7 @@ contract PufferModuleManagerHoleskyTestnetTest is Test {
     // https://holesky.eigenlayer.xyz/operator/0xe2c2dc296a0bff351f6bc3e98d37ea798e393e56
     address RESTAKING_OPERATOR_CONTRACT = 0xe2c2dc296a0bFF351F6bC3e98D37ea798e393e56;
     address RESTAKING_OPERATOR_BEACON = 0xa7DC88c059F57ADcE41070cEfEFd31F74649a261;
+    address REWARDS_COORDINATOR = 0xAcc1fb458a1317E886dB376Fc8141540537E68fE;
 
     function test_claim_undelegated_shares() public {
         // On this block number, we have already undelegated shares from the operator on chain
@@ -71,9 +71,9 @@ contract PufferModuleManagerHoleskyTestnetTest is Test {
         PufferModule upgrade = new PufferModule({
             protocol: PufferProtocol(payable(PUFFER_PROTOCOL_HOLESKY)),
             eigenPodManager: EIGEN_POD_MANAGER,
-            eigenWithdrawalRouter: IDelayedWithdrawalRouter(DELAYED_WITHDRAWAL_ROUTER),
             delegationManager: IDelegationManager(DELEGATION_MANAGER),
-            moduleManager: pufferModuleManager
+            moduleManager: pufferModuleManager,
+            rewardsCoordinator: IRewardsCoordinator(REWARDS_COORDINATOR)
         });
 
         // Execute Beacon upgrade
@@ -135,72 +135,6 @@ contract PufferModuleManagerHoleskyTestnetTest is Test {
         pufferModuleManager.callDelegateTo(
             bytes32("PUFFER_MODULE_0"), RESTAKING_OPERATOR_CONTRACT, signatureWithExpiry, bytes32(0)
         );
-    }
-
-    // This test is for the Existing Holesky Testnet deployment
-    // In order for this test to work, it is necessary to have the following environment variables set: OPERATOR_BLS_SK, OPERATOR_ECDSA_SK
-    function test_register_operator_eigen_da_holesky() public {
-        vm.createSelectFork(vm.rpcUrl("holesky"), 1401731); // (Apr-20-2024 04:50:24 AM +UTC)
-
-        // not important key, only used in tests
-        uint256 BLS_SK = 990752502457672953874018146088155028776815267780829407860243712322774887125;
-
-        IBLSApkRegistry.PubkeyRegistrationParams memory params = _generateBlsPubkeyParams(BLS_SK);
-
-        // He signs with his BLS private key his pubkey to prove the BLS key ownership
-        BN254.G1Point memory messageHash = IRegistryCoordinatorExtended(EIGEN_DA_REGISTRY_COORDINATOR_HOLESKY)
-            .pubkeyRegistrationMessageHash(RESTAKING_OPERATOR_CONTRACT);
-
-        params.pubkeyRegistrationSignature = BN254.scalar_mul(messageHash, BLS_SK);
-
-        // With ECDSA key, he sign the hash confirming that the operator wants to be registered to a certain restaking service
-        (bytes32 digestHash, ISignatureUtils.SignatureWithSaltAndExpiry memory operatorSignature) =
-        _getOperatorSignature(
-            vm.envUint("OPERATOR_ECDSA_SK"),
-            RESTAKING_OPERATOR_CONTRACT,
-            EIGEN_DA_SERVICE_MANAGER,
-            bytes32(hex"aaaabbccbbaa"), // This random salt needs to be different for every new registration
-            type(uint256).max
-        );
-
-        address operatorAddress = vm.addr(vm.envUint("OPERATOR_ECDSA_SK"));
-
-        IPufferModuleManager pufferModuleManager = IPufferModuleManager(PUFFER_MODULE_MANAGER);
-
-        bytes memory hashCall = abi.encodeCall(
-            IPufferModuleManager.updateAVSRegistrationSignatureProof,
-            (IRestakingOperator(RESTAKING_OPERATOR_CONTRACT), digestHash, operatorAddress)
-        );
-
-        vm.startPrank(PUFFER_SHARED_DEV_WALLET); // 'DAO' role on the Holesky testnet
-        (bool success,) = address(pufferModuleManager).call(hashCall);
-        assertEq(success, true, "updateAVSRegistrationSignatureProof failed");
-
-        console.log("updateAVSRegistrationSignatureProof calldata:");
-        console.logBytes(hashCall);
-        // We first need to register that hash on our staking operator contract
-        // This can be done on chain by doing:
-        // cast send $PUFFER_MODULE_MANAGER hashCall --rpc-url=$HOLESKY_RPC_URL --private-key=$PUFFER_SHARED_PK
-
-        bytes memory calldataToRegister = abi.encodeCall(
-            IPufferModuleManager.callRegisterOperatorToAVS,
-            (
-                IRestakingOperator(RESTAKING_OPERATOR_CONTRACT),
-                EIGEN_DA_REGISTRY_COORDINATOR_HOLESKY,
-                bytes(hex"01"),
-                "20.64.16.29:32005;32004", // Update to the correct value
-                params,
-                operatorSignature
-            )
-        );
-
-        console.log("callRegisterOperatorToAVS calldata:");
-        console.logBytes(calldataToRegister);
-        // // cast send $PUFFER_MODULE_MANAGER calldataToRegister --rpc-url=$HOLESKY_RPC_URL --private-key=$PUFFER_SHARED_PK
-
-        // Finish the registration
-        (success,) = address(pufferModuleManager).call(calldataToRegister);
-        assertEq(success, true, "register operator to avs");
     }
 
     // Generates bls pubkey params from a private key
